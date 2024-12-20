@@ -1,0 +1,206 @@
+---
+title: "arima model for objective1"
+output: html_document
+date: "2024-02-25"
+---
+
+
+```{r}
+# Import the libraries
+library(forecast)
+library(zoo)
+library(ggplot2)
+library(TSA)
+library(dplyr)
+
+
+# Import the data
+data <- read.csv("monthly_data_06_23.csv")
+# Rename the columns to make it more readable
+colnames(data) <- c("YearMonth", "Call Counts", "Number of Events", "Number of UG", "Number of GR", "Total Enrollment")
+
+data <- data %>%
+  mutate(Lag1 = lag(`Call Counts`, 1), 
+         Lag2 = lag(`Call Counts`, 2),) 
+
+# Change the variable type of "YearMonth" from character to date
+dates <- as.Date(paste0(data$YearMonth, "-01"))
+
+# Creating zoo object for arima model
+call_counts <- zoo(data$`Call Counts`, order.by = dates)
+
+
+
+
+# Split the data into training and testing sets
+train_end <- as.Date("2018-03-01")
+train_data <- window(call_counts, end = train_end)
+test_data <- window(call_counts, start = as.Date("2021-01-01"))
+
+# Set up the predictors
+predictors <- data.frame(
+  "Number of Events" = data$`Number of Events`, 
+#  "Number of UG" = data$`Number of UG`,
+#  "Number of GR" = data$`Number of GR`,
+  "Total Enrollment" = data$`Total Enrollment`
+)
+# Combine lags into predictors(reason why the model become arima(0,0,0))
+predictors <- cbind(predictors, data$Lag1)
+
+# Find frequency for the Fourier Transformations
+#per = periodogram(data$`Call Counts`)
+#require(data.table)
+#data.table(period = 1/ per$freq, spec = per$spec)[order(-spec)][1:5]
+
+z1 = fourier(ts(coredata(call_counts), frequency = 4.5), K = 1)
+z2 = fourier(ts(coredata(call_counts), frequency = 8.5), K = 2)
+z3 = fourier(ts(coredata(call_counts), frequency = 9.6), K = 1)
+
+predictors = cbind(predictors, z1)
+predictors = cbind(predictors, z2)
+predictors = cbind(predictors, z3)
+
+predictors = as.matrix(predictors)
+train_predictors <- predictors[1:length(train_data), ]
+test_predictors <- predictors[(length(train_data) + 2):length(call_counts), ]
+
+# arimax model
+model <- auto.arima(coredata(train_data), xreg = train_predictors,seasonal = TRUE)
+summary(model)
+
+
+# check residuals
+checkresiduals(model)
+
+
+# Forecast values using the testing set 
+forecast_values <- forecast(model, xreg = test_predictors)
+# check accuracy
+forecast_series <- ts(forecast_values$mean, start = c(2021, 1), frequency = 9)
+test_series <- ts(coredata(test_data), start = c(2021, 1), frequency = 9)
+accuracy(forecast_series, test_series)
+
+
+# Plot the forecasts
+plot(forecast_values, xlab = 'Year', xaxt = "n", ylab = 'Call Counts')
+
+train_series <- ts(coredata(train_data), start = c(2006, 1), frequency = 9)
+Time1 = time(train_series)
+Time2 = time(test_series)
+
+combined_data <- data.frame(
+  Time = Time1,
+  Actual = coredata(train_series),
+  Fit = forecast_values$fitted
+)
+
+# 
+ggplot(data = combined_data, aes(x = Time)) +
+  geom_line(aes(y = Actual, colour = "Actual"), size = 1) +
+  geom_line(aes(y = Fit, colour = "Fit"), size = 1) +
+  scale_colour_manual(name = "Color",values = c("Actual" = "black", "Fit" = "red")) +  
+  theme_minimal()+
+  xlab("Year") + ylab("Call Counts") + ggtitle("ARIMAX(2,0,2) Train vs Fit Call Counts")+
+  theme(legend.position = "bottom")+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=0.5),legend.key.size = unit(2, "lines"),
+        panel.grid.major = element_blank(), # Remove major grid lines
+        panel.grid.minor = element_blank()) # Remove minor grid lines
+
+
+forecast_df <- data.frame(
+  Date = Time2,
+  Actual = coredata(test_series),
+  Mean = forecast_values$mean,
+  Lo80 = forecast_values$lower[,1], 
+  Hi80 = forecast_values$upper[,1], 
+  Lo95 = forecast_values$lower[,2], 
+  Hi95 = forecast_values$upper[,2]  
+)
+
+
+ggplot(forecast_df, aes(x = Date)) +
+  geom_line(aes(y = Mean, color = "Forecast"), size = 1) + 
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_ribbon(aes(ymin = Lo95, ymax = Hi95, fill = "95% Confidence Interval"), alpha = 0.1) + 
+  geom_ribbon(aes(ymin = Lo80, ymax = Hi80, fill = "80% Confidence Interval"), alpha = 0.2) + 
+  scale_color_manual(name = "", values = c("black","blue")) + 
+  scale_fill_manual(name = "", 
+                    values = c("95% Confidence Interval" = "lightblue", "80% Confidence Interval" = "skyblue"),
+                    guide = guide_legend(override.aes = list(alpha = 1))) + 
+  xlab("Year") + 
+  ylab("Call Counts") +
+  ggtitle("ARIMAX(2,0,2) Forecast with 80% and 95% Confidence Intervals") +
+  theme_minimal()+
+  theme(legend.position = "bottom") +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=0.5),legend.key.size = unit(2, "lines"),
+        panel.grid.major = element_blank(), # Remove major grid lines
+        panel.grid.minor = element_blank()) # Remove minor grid lines
+
+fitted_values <- fitted(model)
+fitted_values[1] = 30
+model$residuals[1]= 0
+# 
+residual_se <- sd(model$residuals)
+# 
+critical_value_95 <- 1.96
+
+# 
+lower_bound_95 <- fitted_values - critical_value_95 * residual_se
+upper_bound_95 <- fitted_values + critical_value_95 * residual_se
+
+# 
+critical_value_80 <- 1.28
+
+# 
+lower_bound_80 <- fitted_values - critical_value_80 * residual_se
+upper_bound_80 <- fitted_values + critical_value_80 * residual_se
+```
+
+
+
+```{r}
+# future predictions
+pred_24 <- 1.08 * test_predictors[19:27,]
+pred_25 <- 1.08 * pred_24
+pred_26 <- 1.08 * pred_25
+
+future_predictors <- rbind(test_predictors, pred_24, pred_25, pred_26)
+future_forecast <- forecast(model, xreg = future_predictors)
+autoplot(future_forecast)
+forecast_series <- ts(future_forecast$mean, start = c(2021, 1), frequency = 9)
+Time3 = time(forecast_series)
+Time_bt<-c(2018.444, 2018.556, 2018.667, 2018.778, 2018.889, 2019.000, 2019.111, 2019.222, 2019.333, 2019.444, 2019.556, 2019.667, 2019.778, 2019.889, 2020.000, 2020.111, 2020.222, 2020.333, 2020.444, 2020.556, 2020.667, 2020.778, 2020.889)
+Time_all <- c(Time1, Time_bt, Time3)
+na_vector1 <- rep(NA, 23)
+na_vector2 <- rep(NA, 26)
+
+predicted_data <- data.frame(
+  Date = Time_all,
+  Actual = c(data$`Call Counts`[1:111],na_vector1,data$`Call Counts`[112:139], na_vector), 
+  Forecast = c(fitted_values,na_vector1, future_forecast$mean),  
+  Lower_80 = c(lower_bound_80,na_vector1, future_forecast$lower[,1]),  
+  Upper_80 = c(upper_bound_80,na_vector1, future_forecast$upper[,1]), 
+  Lower_95 = c(lower_bound_95,na_vector1, future_forecast$lower[,2]),  
+  Upper_95 = c(upper_bound_95,na_vector1, future_forecast$upper[,2]) 
+)
+
+# Plot
+ggplot(predicted_data, aes(x = Date)) +
+  geom_line(aes(y = Forecast , color = "Forecast"), size = 1) + 
+  geom_line(aes(y = Actual, color = "Actual"), size = 0.8) +
+  geom_ribbon(aes(ymin = Lower_95, ymax = Upper_95, fill = "95% Confidence Interval"), alpha = 0.1) + 
+  geom_ribbon(aes(ymin = Lower_80, ymax = Upper_80, fill = "80% Confidence Interval"), alpha = 0.2) + 
+  scale_color_manual(name = "", values = c("black","blue")) + 
+  scale_fill_manual(name = "", 
+                    values = c("95% Confidence Interval" = "lightblue", "80% Confidence Interval" = "skyblue"),
+                    guide = guide_legend(override.aes = list(alpha = 1))) + 
+  xlab("Year") + 
+  ylab("Call Counts") +
+  ggtitle("ARIMAX(2,0,2) Forecast with 80% and 95% Confidence Intervals") +
+  theme_minimal()+
+  theme(legend.position = "bottom") +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=0.5),legend.key.size = unit(2, "lines"),
+        panel.grid.major = element_blank(), # Remove major grid lines
+        panel.grid.minor = element_blank()) # Remove minor grid lines
+```
+

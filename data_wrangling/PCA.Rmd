@@ -1,0 +1,47 @@
+---
+title: "PCA graph for Objective1"
+output: html_document
+date: "2024-02-12"
+---
+
+
+```{r}
+# Import the libraries
+library(ggbiplot)
+library(ggplot2)
+# Import the data
+data <- read.csv("monthly_data_16_23.csv")
+# Rename the columns to make it more readable
+colnames(data) <- c("YearMonth", "Call Counts", "Number of Events", "Number of UG", "Number of GR", "Total Enrollment", "Number of Employees")
+# pca
+pca_result <- prcomp(data[,3:7], scale = TRUE)  # scale = TRUE to standardize the variables
+
+# Extracting PCA results
+pca_data <- as.data.frame(pca_result$x)
+pca_vars <- as.data.frame(pca_result$rotation)
+
+# Scaling PCA results
+scaled_pca_result <- pca_result
+max_value <- max(abs(scaled_pca_result$x), na.rm = TRUE)
+scaled_pca_result$x <- 2 * scaled_pca_result$x / max_value
+
+# Calculating percentage of variance explained
+variance_explained <- round(scaled_pca_result$sdev^2 / sum(scaled_pca_result$sdev^2) * 100, 2)
+
+# Creating biplot
+biplot <- ggbiplot(scaled_pca_result, obs.scale = 1, var.scale = 1, circle = TRUE, alpha = 0, varname.color = c("black", "red", "blue", "orange", "purple"), varname.adjust = 135, varname.size = 0) +
+  ggtitle("Biplot of PCA on Call Volume Dataset") +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "grey") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey") +
+  labs(x = paste0("PC1 (", variance_explained[1], "%)"),
+       y = paste0("PC2 (", variance_explained[2], "%)")) +
+  theme(panel.grid.major = element_blank(), # Remove major grid lines
+        panel.grid.minor = element_blank()) # Remove minor grid lines
+
+legend <- data.frame(Colors = c("Number of Employees", "Number of Events", "Number of UG", "Number of GR", "Total Enrollment"), pc1 = 0, pc2 = 0)
+
+biplot + geom_point(aes(x = pc1, y = pc2, color = Colors), data = legend, size = 3) +
+  scale_color_manual(values = c( "purple", "black","red", "blue", "orange"))
+
+```

@@ -1,0 +1,32 @@
+---
+title: "Plots for number of calls of different patient types"
+output: html_document
+date: "2024-02-12"
+---
+
+```{r}
+library(readxl)
+library(stats)
+library(forecast)
+library(dplyr)
+library(openxlsx)
+library(ggplot2)
+library(showtext)
+# Read data from Excel file
+data<- read_excel("CallPatientsType.xlsx")
+# Plot the number of calls of different patient types
+ggplot(data, aes(x = Year)) +
+  geom_line(aes(y = Undergraduate, color = "Undergraduate"), size = 1) +
+  geom_line(aes(y = Graduate, color = "Graduate"), size = 1) +
+  geom_line(aes(y = Staff, color = "Staff"), size = 1) +
+  geom_line(aes(y = Visitor, color = "Visitor"), size = 1) +
+  geom_line(aes(y = Unknown, color = "Unknown"), size = 1) +
+  scale_x_continuous(breaks = data$Year) +
+  scale_y_continuous(breaks = seq(0,700,50))+  
+  theme_minimal() + labs(y= "Number of calls")+ labs(y= "Number of calls")+ 
+  labs(color = "Color")+
+  theme(legend.key.size = unit(2, "lines"),
+        panel.grid.major = element_blank(), # Remove major grid lines
+        panel.grid.minor = element_blank()) # Remove minor grid lines
+
+```
