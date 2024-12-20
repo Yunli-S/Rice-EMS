@@ -1,3 +1,5 @@
+This project was conducted for the Rice Emergency Services Department, utilizing a time series model to assist in forecasting the department's budget.
+
 **Project Description**
 
 Rice Emergency Medical Services (REMS) serves the Rice community and provides them with accessible medical care. After receiving a phone call, REMS dispatches staff to the site of the request. REMS staff then contact the patient and decide the best treatment plan, which could include calling an ambulance for transport to a nearby hospital. Composed mainly of undergraduate volunteers, REMS responds to about 1,000 emergencies each year and provides 5 academic courses in the Department of Kinesiology. 
